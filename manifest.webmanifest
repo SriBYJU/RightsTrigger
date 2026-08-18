@@ -1,0 +1,9 @@
+{
+  "name": "RightsTrigger",
+  "short_name": "RightsTrigger",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6f7f4",
+  "theme_color": "#101513",
+  "description": "A local-first consumer protection and purchase-rights tracker."
+}
