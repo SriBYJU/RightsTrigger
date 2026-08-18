@@ -40,7 +40,7 @@ function parseOrderNumber(text) {
 
 function parseRetailer(text) {
   const lines = cleanText(text).split('\n').map(s=>s.trim()).filter(Boolean).slice(0,10);
-  const known = ['amazon','walmart','target','best buy','costco','nike','apple','adidas','ebay','etsy','home depot','lowe\'s','macy\'s','nordstrom','staples'];
+  const known = ['amazon','walmart','target','best buy','costco','nike','apple','adidas','ebay','etsy','home depot',"lowe's","macy's",'nordstrom','staples'];
   const lower = text.toLowerCase();
   const hit = known.find(k => lower.includes(k));
   if (hit) return hit.replace(/\b\w/g,c=>c.toUpperCase());
@@ -112,23 +112,135 @@ async function extractPdf(file, onProgress) {
   return cleanText(text);
 }
 
-async function extractImage(file, onProgress) {
-  onProgress?.('Loading local OCR engine…');
-  let mod;
-  try { mod = await import('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js'); }
-  catch { throw new Error('OCR engine could not load. Manual entry still works, and your file can still be saved locally.'); }
-  onProgress?.('Running private on-device OCR…');
-  const result = await mod.recognize(file, 'eng', {
+let ocrWorkerPromise = null;
+
+async function createOcrWorker(onProgress) {
+  onProgress?.('Loading OCR engine…');
+  const mod = await import('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js');
+  const createWorker = mod.createWorker || mod.default?.createWorker;
+  if (typeof createWorker !== 'function') throw new Error('OCR engine loaded without a compatible worker API.');
+
+  return createWorker('eng', 1, {
+    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5',
+    langPath: 'https://tessdata.projectnaptha.com/4.0.0',
     logger: m => {
-      if (m.status && typeof m.progress === 'number') onProgress?.(`${m.status} · ${Math.round(m.progress*100)}%`);
+      if (!m?.status) return;
+      if (typeof m.progress === 'number') onProgress?.(`${m.status} · ${Math.round(m.progress * 100)}%`);
+      else onProgress?.(m.status);
     }
   });
-  return cleanText(result.data.text || '');
+}
+
+async function getOcrWorker(onProgress) {
+  if (!ocrWorkerPromise) {
+    ocrWorkerPromise = createOcrWorker(onProgress).catch(error => {
+      ocrWorkerPromise = null;
+      throw error;
+    });
+  }
+  return ocrWorkerPromise;
+}
+
+async function imageFileToCanvas(file, onProgress) {
+  onProgress?.('Preparing receipt image…');
+
+  let source;
+  let sourceUrl = null;
+  try {
+    if ('createImageBitmap' in window) {
+      try { source = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+      catch { source = null; }
+    }
+    if (!source) {
+      sourceUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = sourceUrl;
+      if (img.decode) await img.decode();
+      else await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('Image could not be decoded.'));});
+      source = img;
+    }
+
+    const sw = source.width || source.naturalWidth;
+    const sh = source.height || source.naturalHeight;
+    if (!sw || !sh) throw new Error('Image dimensions could not be read.');
+
+    const minLongSide = 1800;
+    const maxLongSide = 2600;
+    const longSide = Math.max(sw, sh);
+    let scale = 1;
+    if (longSide < minLongSide) scale = Math.min(2.5, minLongSide / longSide);
+    else if (longSide > maxLongSide) scale = maxLongSide / longSide;
+
+    const width = Math.max(1, Math.round(sw * scale));
+    const height = Math.max(1, Math.round(sh * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('Image canvas is unavailable in this browser.');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0,0,width,height);
+    ctx.drawImage(source,0,0,width,height);
+
+    try {
+      const image = ctx.getImageData(0,0,width,height);
+      const d = image.data;
+      const contrast = 1.25;
+      for (let i=0;i<d.length;i+=4) {
+        const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+        const v = Math.max(0,Math.min(255,(gray-128)*contrast+128));
+        d[i]=d[i+1]=d[i+2]=v;
+      }
+      ctx.putImageData(image,0,0);
+    } catch {}
+
+    return canvas;
+  } catch (error) {
+    const isHeic = /heic|heif/i.test(file.type || '') || /\.(heic|heif)$/i.test(file.name || '');
+    if (isHeic) throw new Error('This HEIC/HEIF photo could not be decoded for OCR. Use a screenshot or JPEG/PNG copy of the receipt.');
+    throw new Error(`The receipt image could not be decoded: ${error.message || 'unknown image error'}`);
+  } finally {
+    if (source?.close) source.close();
+    if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+  }
+}
+
+async function extractImage(file, onProgress) {
+  const canvas = await imageFileToCanvas(file,onProgress);
+  let worker;
+  try {
+    worker = await getOcrWorker(onProgress);
+    onProgress?.('Reading receipt text…');
+    const result = await worker.recognize(canvas, { rotateAuto: true });
+    const text = cleanText(result?.data?.text || '');
+    if (!text) throw new Error('OCR ran but found no readable text.');
+    return text;
+  } catch (firstError) {
+    try {
+      const stale = await ocrWorkerPromise;
+      await stale?.terminate?.();
+    } catch {}
+    ocrWorkerPromise = null;
+
+    try {
+      onProgress?.('Retrying OCR engine…');
+      worker = await getOcrWorker(onProgress);
+      const result = await worker.recognize(canvas, { rotateAuto: true });
+      const text = cleanText(result?.data?.text || '');
+      if (!text) throw new Error('OCR ran but found no readable text.');
+      return text;
+    } catch (retryError) {
+      throw new Error(`OCR could not read this image. ${retryError?.message || firstError?.message || 'Unknown OCR error'}`);
+    }
+  }
 }
 
 export async function extractFileText(file, onProgress) {
   if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) return extractPdf(file,onProgress);
-  if (file.type.startsWith('image/')) return extractImage(file,onProgress);
+  if (file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|heic|heif)$/i.test(file.name)) return extractImage(file,onProgress);
   if (file.type.startsWith('text/') || file.name.toLowerCase().endsWith('.txt')) return cleanText(await file.text());
   throw new Error(`Unsupported file type: ${file.name}`);
 }
@@ -141,6 +253,7 @@ export async function analyzeFiles(files, onProgress) {
       const text = await extractFileText(files[i],onProgress);
       results.push({ name:files[i].name, type:files[i].type, size:files[i].size, text, blob:files[i] });
     } catch (error) {
+      console.error('[RightsTrigger OCR]', files[i].name, error);
       results.push({ name:files[i].name, type:files[i].type, size:files[i].size, text:'', blob:files[i], error:error.message });
     }
   }
