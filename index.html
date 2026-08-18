@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#101513" />
+  <meta name="description" content="RightsTrigger — a local-first consumer protection and purchase-rights agent." />
+  <title>RightsTrigger</title>
+  <link rel="icon" href="assets/mark.svg" type="image/svg+xml" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="config.js"></script>
+</head>
+<body>
+  <div id="toast-region" class="toast-region" aria-live="polite"></div>
+
+  <div id="onboarding" class="onboarding hidden" aria-hidden="true">
+    <div class="onboarding-card">
+      <button class="icon-button onboarding-close" id="onboarding-close" aria-label="Close onboarding">×</button>
+      <div class="onboarding-step active" data-step="1">
+        <img src="assets/mark.svg" class="welcome-mark" alt="" />
+        <p class="eyebrow">LOCAL-FIRST CONSUMER INTELLIGENCE</p>
+        <h1>Know what protects you.</h1>
+        <p class="lede">Add a purchase. RightsTrigger organizes the evidence, tracks important dates, and surfaces actions worth reviewing.</p>
+        <div class="privacy-pill">Private by default · No account required</div>
+        <button class="primary-button wide" data-next="2">Get started</button>
+      </div>
+      <div class="onboarding-step" data-step="2">
+        <p class="eyebrow">TWO QUICK DETAILS</p>
+        <h2>Make it yours.</h2>
+        <p class="muted">Only information that improves the experience. You can change this later.</p>
+        <label>First name <span>optional</span>
+          <input id="setup-name" autocomplete="given-name" maxlength="40" placeholder="Your name" />
+        </label>
+        <div class="field-grid">
+          <label>Country
+            <select id="setup-country">
+              <option value="US">United States</option>
+              <option value="CA">Canada</option>
+              <option value="GB">United Kingdom</option>
+              <option value="AU">Australia</option>
+              <option value="IN">India</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </label>
+          <label>State / region <span>optional</span>
+            <input id="setup-region" maxlength="60" placeholder="Virginia" />
+          </label>
+        </div>
+        <button class="primary-button wide" id="finish-onboarding">Start protecting purchases</button>
+      </div>
+    </div>
+  </div>
+
+  <header class="app-header">
+    <a class="brand" href="#home" aria-label="RightsTrigger home">
+      <img src="assets/mark.svg" alt="" />
+      <span>RightsTrigger</span>
+    </a>
+    <div class="header-actions">
+      <button class="ghost-button desktop-only" id="privacy-status">Local mode</button>
+      <button class="primary-button" data-open-add>+ Add purchase</button>
+    </div>
+  </header>
+
+  <main class="shell">
+    <aside class="sidebar" aria-label="Main navigation">
+      <nav>
+        <a href="#home" data-route="home" class="nav-item active"><span>⌂</span>Home</a>
+        <a href="#purchases" data-route="purchases" class="nav-item"><span>◫</span>Purchases</a>
+        <a href="#actions" data-route="actions" class="nav-item"><span>↗</span>Actions <b id="action-badge" class="badge hidden">0</b></a>
+        <a href="#profile" data-route="profile" class="nav-item"><span>○</span>Profile</a>
+      </nav>
+      <div class="sidebar-note">
+        <strong>Private by default</strong>
+        <p>Purchase data is stored in this browser unless you choose to export it.</p>
+      </div>
+    </aside>
+
+    <section id="view" class="view" tabindex="-1"></section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="Mobile navigation">
+    <a href="#home" data-route="home" class="active">Home</a>
+    <a href="#purchases" data-route="purchases">Purchases</a>
+    <button data-open-add aria-label="Add purchase">+</button>
+    <a href="#actions" data-route="actions">Actions</a>
+    <a href="#profile" data-route="profile">Profile</a>
+  </nav>
+
+  <dialog id="add-dialog" class="modal">
+    <form class="modal-card" id="add-form">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">ADD A PURCHASE</p>
+          <h2>Give RightsTrigger the evidence.</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-add aria-label="Close">×</button>
+      </div>
+
+      <div class="upload-zone" id="upload-zone" tabindex="0" role="button" aria-label="Upload receipt, order confirmation, warranty, PDF, image, or text file">
+        <input id="file-input" type="file" accept="image/*,.pdf,.txt" multiple hidden />
+        <div class="upload-icon">↑</div>
+        <strong>Drop receipts or documents here</strong>
+        <p>PDF, image, or text · processed on this device when possible</p>
+        <button type="button" class="secondary-button" id="browse-button">Choose files</button>
+      </div>
+
+      <div id="file-list" class="file-list"></div>
+      <div id="analysis-progress" class="analysis-progress hidden">
+        <div class="spinner"></div>
+        <div><strong id="analysis-title">Reading documents…</strong><p id="analysis-detail">This can take a moment for images.</p></div>
+      </div>
+
+      <div class="divider"><span>or enter manually</span></div>
+
+      <div class="form-grid">
+        <label>Product
+          <input id="product" name="product" required placeholder="Sony headphones" />
+        </label>
+        <label>Retailer
+          <input id="retailer" name="retailer" required placeholder="Amazon" />
+        </label>
+        <label>Purchase date
+          <input id="purchase-date" name="purchaseDate" type="date" required />
+        </label>
+        <label>Amount
+          <input id="amount" name="amount" inputmode="decimal" placeholder="448.00" />
+        </label>
+        <label>Currency
+          <select id="currency" name="currency">
+            <option value="USD">USD</option><option value="CAD">CAD</option><option value="GBP">GBP</option><option value="EUR">EUR</option><option value="AUD">AUD</option><option value="INR">INR</option>
+          </select>
+        </label>
+        <label>Order / receipt # <span>optional</span>
+          <input id="order-number" name="orderNumber" placeholder="113-…" />
+        </label>
+        <label>Model / serial <span>optional</span>
+          <input id="model-number" name="modelNumber" placeholder="WH-1000XM6" />
+        </label>
+      </div>
+
+      <details class="policy-details">
+        <summary>Protection details <span>optional but recommended</span></summary>
+        <p>For the most reliable result, paste the relevant return/warranty text or enter a known deadline. RightsTrigger will not invent a retailer policy.</p>
+        <div class="form-grid">
+          <label>Known return deadline <span>optional</span>
+            <input id="return-deadline" name="returnDeadline" type="date" />
+          </label>
+          <label>Warranty end date <span>optional</span>
+            <input id="warranty-end" name="warrantyEnd" type="date" />
+          </label>
+        </div>
+        <label>Policy / warranty text <span>optional</span>
+          <textarea id="policy-text" name="policyText" rows="5" placeholder="Paste the relevant policy language here…"></textarea>
+        </label>
+      </details>
+
+      <div class="confidence-panel hidden" id="confidence-panel">
+        <span id="confidence-dot"></span>
+        <div><strong id="confidence-label"></strong><p id="confidence-copy"></p></div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="secondary-button" type="button" data-close-add>Cancel</button>
+        <button class="primary-button" id="save-purchase" type="submit">Save & analyze</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="evidence-dialog" class="modal small-modal">
+    <div class="modal-card" id="evidence-content"></div>
+  </dialog>
+
+  <dialog id="proof-dialog" class="modal">
+    <div class="modal-card" id="proof-content"></div>
+  </dialog>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
