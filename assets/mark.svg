@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="RightsTrigger logo">
+  <rect width="64" height="64" rx="18" fill="#101513"/>
+  <path d="M19 17h19c7 0 12 5 12 12 0 5-3 9-7 11l8 9h-11l-7-8h-5v8h-9V17zm9 8v9h9c3 0 5-2 5-5s-2-4-5-4h-9z" fill="#f6f7f4"/>
+  <circle cx="48" cy="17" r="6" fill="#b9f56a"/>
+</svg>
